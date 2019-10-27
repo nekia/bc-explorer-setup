@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 
 	"github.com/Songmu/prompter"
+	"gopkg.in/yaml.v2"
 )
 
 //Config defines model for storing account details in database
@@ -55,6 +56,17 @@ func main() {
 	explorerBoot := prompter.Choose("How to bring up explorer?", []string{"source", "docker"}, "source")
 
 	fmt.Println(fabricLoc, ":", explorerBoot)
+
+	configdata, _ := ioutil.ReadFile("./configtx.yaml")
+	m := make(map[interface{}]interface{})
+	yaml.Unmarshal(configdata, &m)
+	configurationsarray := m["Organizations"].([]interface{})
+	for _, e := range configurationsarray {
+		ee := e.(map[interface{}]interface{})
+		fmt.Println(ee["ID"])
+		// pretty.Printf("--- configurations:\n%# v\n\n", ee)
+	}
+	// fmt.Println(configurations)
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
