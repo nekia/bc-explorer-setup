@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 
 	"github.com/Songmu/prompter"
+	"github.com/dixonwille/wmenu"
 	"gopkg.in/yaml.v2"
 )
 
@@ -33,7 +35,7 @@ type Peer struct {
 func main() {
 	config := Config{}
 
-	config.Name = "first-network"
+	config.Name = "first-network-generated"
 	config.Version = "1.0.0"
 	config.License = "Apache-2.0"
 	config.Client.AdminUser = "admin"
@@ -57,16 +59,32 @@ func main() {
 
 	fmt.Println(fabricLoc, ":", explorerBoot)
 
+	actFunc := func(opts []wmenu.Opt) error {
+		for _, opt := range opts {
+			fmt.Printf("%s has an id of %d. %s\n", opt.Text, opt.ID, opt.Value.(string))
+		}
+		return nil
+	}
+	menu := wmenu.NewMenu("Choose an organization used to connect network")
+	menu.Action(actFunc)
+	// menu.AllowMultiple()
+	// menu.SetSeparator(",")
+
 	configdata, _ := ioutil.ReadFile("./configtx.yaml")
 	m := make(map[interface{}]interface{})
 	yaml.Unmarshal(configdata, &m)
 	configurationsarray := m["Organizations"].([]interface{})
 	for _, e := range configurationsarray {
 		ee := e.(map[interface{}]interface{})
-		fmt.Println(ee["ID"])
+		fmt.Println()
+		menu.Option(ee["Name"].(string), ee["ID"].(string), false, nil)
 		// pretty.Printf("--- configurations:\n%# v\n\n", ee)
 	}
-	// fmt.Println(configurations)
+
+	err := menu.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
