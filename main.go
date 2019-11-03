@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"strings"
 
 	"github.com/Songmu/prompter"
 	"github.com/dixonwille/wmenu"
 	"gopkg.in/yaml.v2"
+	"github.com/kr/pretty"
 )
 
 //Config defines model for storing account details in database
@@ -18,6 +20,18 @@ type Config struct {
 	License string             `json:"license"`
 	Client  Client             `json:"client"`
 	Channel map[string]Channel `json:"channels"`
+}
+
+type Crypto struct {
+	Name string
+	Domain string
+	EnableNodeOUs bool
+	Specs []Spec
+}
+
+type Spec struct {
+	Hostname string
+	CommonName string
 }
 
 type Client struct {
@@ -59,9 +73,12 @@ func main() {
 
 	fmt.Println(fabricLoc, ":", explorerBoot)
 
+	org := make(map[interface{}]interface{})
+
 	actFunc := func(opts []wmenu.Opt) error {
 		for _, opt := range opts {
-			fmt.Printf("%s has an id of %d. %s\n", opt.Text, opt.ID, opt.Value.(string))
+			org = opt.Value.(map[interface{}]interface{})
+			fmt.Printf("%s has an id of %d. %s\n", opt.Text, opt.ID, org["MSPDir"].(string))
 		}
 		return nil
 	}
@@ -76,8 +93,7 @@ func main() {
 	configurationsarray := m["Organizations"].([]interface{})
 	for _, e := range configurationsarray {
 		ee := e.(map[interface{}]interface{})
-		fmt.Println()
-		menu.Option(ee["Name"].(string), ee["ID"].(string), false, nil)
+		menu.Option(ee["Name"].(string), ee, false, nil)
 		// pretty.Printf("--- configurations:\n%# v\n\n", ee)
 	}
 
@@ -85,6 +101,53 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	mspDirPath := strings.Split(org["MSPDir"].(string), "/")
+	domain := mspDirPath[ len(mspDirPath) - 2 ]
+	fmt.Println(domain)
+
+	orgCrypto := make(map[interface{}]interface{})
+
+	cryptoConfig, _ := ioutil.ReadFile("./crypto-config.yaml")
+	n := make(map[interface{}]interface{})
+	yaml.Unmarshal(cryptoConfig, &n)
+	peerOrgArray := n["PeerOrgs"].([]interface{})
+	for _, e := range peerOrgArray {
+		ee := e.(map[interface{}]interface{})
+		pretty.Printf("--- Crypto Config:\n%# v\n\n", ee)
+		if ee["Domain"].(string) == domain {
+			orgCrypto = ee
+			break
+		}
+	}
+
+	fmt.Println(orgCrypto["Name"].(string))
+
+	if v, ok := orgCrypto["Specs"]; ok {
+		array := v.([]interface{})
+		for _, e := range array {
+			spec := e.(map[interface{}]interface{})
+			fmt.Println("HOSTNAME:" + spec["Hostname"].(string))
+			if cmnName, ok := spec["CommonName"]; ok {
+				fmt.Println("CN:" + cmnName.(string))
+			} else {
+				fmt.Println("CN:" + spec["Hostname"].(string) + "." + orgCrypto["Domain"].(string))
+			}
+		}
+	}
+
+	if v, ok := orgCrypto["Template"]; ok {
+		template := v.(map[interface{}]interface{})
+		startIdx := 0
+		if start, ok := template["Start"]; ok {
+			startIdx = start.(int)
+		}
+		for i := startIdx; i < startIdx + template["Count"].(int); i++ {
+			fmt.Printf("HOSTNAME:peer%d\n", i)
+			fmt.Printf("CN:peer%d.%s\n", i, orgCrypto["Domain"].(string))
+		}
+	}
+
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
