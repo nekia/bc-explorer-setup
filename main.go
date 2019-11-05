@@ -3,14 +3,19 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/Songmu/prompter"
 	"github.com/dixonwille/wmenu"
-	"gopkg.in/yaml.v2"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
 	"github.com/kr/pretty"
+	"golang.org/x/net/context"
+	"gopkg.in/yaml.v2"
 )
 
 //Config defines model for storing account details in database
@@ -23,14 +28,14 @@ type Config struct {
 }
 
 type Crypto struct {
-	Name string
-	Domain string
+	Name          string
+	Domain        string
 	EnableNodeOUs bool
-	Specs []Spec
+	Specs         []Spec
 }
 
 type Spec struct {
-	Hostname string
+	Hostname   string
 	CommonName string
 }
 
@@ -44,6 +49,23 @@ type Channel struct {
 }
 
 type Peer struct {
+}
+
+func pullCli(ver string) {
+	ctx := context.Background()
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		panic(err)
+	}
+
+	out, err := cli.ImagePull(ctx, "hyperledger/fabric-tools:"+ver, types.ImagePullOptions{})
+	if err != nil {
+		panic(err)
+	}
+
+	defer out.Close()
+
+	io.Copy(os.Stdout, out)
 }
 
 func main() {
@@ -75,7 +97,7 @@ func main() {
 
 	org := make(map[interface{}]interface{})
 
-	actFunc := func(opts []wmenu.Opt) error {
+	actOrgFunc := func(opts []wmenu.Opt) error {
 		for _, opt := range opts {
 			org = opt.Value.(map[interface{}]interface{})
 			fmt.Printf("%s has an id of %d. %s\n", opt.Text, opt.ID, org["MSPDir"].(string))
@@ -83,7 +105,7 @@ func main() {
 		return nil
 	}
 	menu := wmenu.NewMenu("Choose an organization used to connect network")
-	menu.Action(actFunc)
+	menu.Action(actOrgFunc)
 	// menu.AllowMultiple()
 	// menu.SetSeparator(",")
 
@@ -103,7 +125,7 @@ func main() {
 	}
 
 	mspDirPath := strings.Split(org["MSPDir"].(string), "/")
-	domain := mspDirPath[ len(mspDirPath) - 2 ]
+	domain := mspDirPath[len(mspDirPath)-2]
 	fmt.Println(domain)
 
 	orgCrypto := make(map[interface{}]interface{})
@@ -136,18 +158,39 @@ func main() {
 		}
 	}
 
+	var dfltPeer string
+	actPeerFunc := func(opts []wmenu.Opt) error {
+		for _, opt := range opts {
+			dfltPeer = opt.Value.(string)
+			fmt.Printf("%s is selected\n", dfltPeer)
+		}
+		return nil
+	}
+	menu = wmenu.NewMenu("Choose a peer to use as default peer")
+	menu.Action(actPeerFunc)
+	// menu.AllowMultiple()
+	// menu.SetSeparator(",")
+
 	if v, ok := orgCrypto["Template"]; ok {
 		template := v.(map[interface{}]interface{})
 		startIdx := 0
 		if start, ok := template["Start"]; ok {
 			startIdx = start.(int)
 		}
-		for i := startIdx; i < startIdx + template["Count"].(int); i++ {
-			fmt.Printf("HOSTNAME:peer%d\n", i)
-			fmt.Printf("CN:peer%d.%s\n", i, orgCrypto["Domain"].(string))
+		for i := startIdx; i < startIdx+template["Count"].(int); i++ {
+			// fmt.Printf("HOSTNAME:peer%d\n", i)
+			// fmt.Printf("CN:peer%d.%s\n", i, orgCrypto["Domain"].(string))
+			cn := fmt.Sprintf("peer%d.%s", i, orgCrypto["Domain"].(string))
+			menu.Option(cn, cn, false, nil)
 		}
 	}
 
+	err = menu.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pullCli("1.4.2")
 
 	bytes, err := json.Marshal(config)
 	if err != nil {

@@ -1,0 +1,32 @@
+export PATH=./bin:$PATH
+export CONFIG_ROOT=crypto-config/peerOrganizations/org1.example.com/users/User1@org1.example.com
+export HOSTALIASES=./hosts
+echo 'peer0.org1.example.com    127.0.0.1' > ./hosts
+
+docker run --rm -it \
+-v $PWD/crypto-config/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp:/etc/hyperledger/fabric/msp \
+-v $PWD/crypto-config/peerOrganizations/org1.example.com/users/User1@org1.example.com/tls:/etc/hyperledger/fabric/tls \
+-w /etc/hyperledger/fabric \
+--network net_byfn \
+hyperledger/fabric-tools:amd64-1.4.3 \
+sh -c 'discover --configFile conf.yaml \
+--peerTLSCA=tls/ca.crt \
+--userKey=msp/keystore/3c4e47903ec2679a9a44455d29518bc23b8befd9c03fbbdfc53e4103be584a4f_sk \
+--userCert=msp/signcerts/User1@org1.example.com-cert.pem \
+--MSP Org1MSP \
+saveConfig; \
+discover --configFile conf.yaml \
+peers \
+--channel mychannel \
+--server peer0.org1.example.com:7051'
+
+
+
+discover --configFile conf.yaml \
+--peerTLSCA=tls/ca.crt \
+--userKey=msp/keystore/3c4e47903ec2679a9a44455d29518bc23b8befd9c03fbbdfc53e4103be584a4f_sk \
+--userCert=msp/signcerts/User1@org1.example.com-cert.pem \
+--MSP Org1MSP \
+saveConfig
+
+discover --configFile conf.yaml peers --channel mychannel  --server peer0.org1.example.com:7051
