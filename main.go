@@ -68,6 +68,44 @@ func pullCli(ver string) {
 	io.Copy(os.Stdout, out)
 }
 
+func listCli(peer string) {
+	ctx := context.Background()
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		panic(err)
+	}
+
+	var peerContainer types.Container
+	c := types.ContainerListOptions{}
+	if list, err := cli.ContainerList(ctx, c); err != nil {
+		panic(err)
+	} else {
+		for _, container := range list {
+			if strings.Split(container.Names[0], "/")[1] == peer {
+				fmt.Printf("Found : %s\n", peer)
+				peerContainer = container
+				break
+			}
+		}
+	}
+
+	cc := types.ExecConfig{AttachStdout: true, AttachStderr: true, Cmd: []string{"peer", "channel", "list"}}
+	execID, _ := cli.ContainerExecCreate(ctx, peerContainer.ID, cc)
+
+	config := types.ExecStartCheck{}
+	res, err := cli.ContainerExecAttach(ctx, execID.ID, config)
+	if err != nil {
+		panic(err)
+	}
+
+	err = cli.ContainerExecStart(ctx, execID.ID, types.ExecStartCheck{})
+	if err != nil {
+		panic(err)
+	}
+	content, _, _ := res.Reader.ReadLine()
+	fmt.Println(string(content))
+}
+
 func main() {
 	config := Config{}
 
@@ -190,7 +228,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	pullCli("1.4.2")
+	// pullCli("1.4.2")
+	listCli(dfltPeer)
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
