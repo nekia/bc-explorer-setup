@@ -68,7 +68,7 @@ func pullCli(ver string) {
 	io.Copy(os.Stdout, out)
 }
 
-func listCli(peer string) {
+func listCli(peer string) string {
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -89,7 +89,7 @@ func listCli(peer string) {
 		}
 	}
 
-	cc := types.ExecConfig{AttachStdout: true, AttachStderr: true, Cmd: []string{"peer", "channel", "list"}}
+	cc := types.ExecConfig{AttachStdout: true, AttachStderr: true, Cmd: []string{"peer", "channel", "list"}, Env: []string{"FABRIC_LOGGING_SPEC=critical"}}
 	execID, _ := cli.ContainerExecCreate(ctx, peerContainer.ID, cc)
 
 	config := types.ExecStartCheck{}
@@ -102,8 +102,32 @@ func listCli(peer string) {
 	if err != nil {
 		panic(err)
 	}
-	content, _, _ := res.Reader.ReadLine()
-	fmt.Println(string(content))
+
+	var dfltChannel string
+	actChannelFunc := func(opts []wmenu.Opt) error {
+		for _, opt := range opts {
+			dfltChannel = opt.Value.(string)
+			fmt.Printf("%s is selected\n", dfltChannel)
+		}
+		return nil
+	}
+
+	menu := wmenu.NewMenu("Choose an default channel to connect network")
+	menu.Action(actChannelFunc)
+
+	content, _, _ := res.Reader.ReadLine() // Skip the first line
+	for content, _, err = res.Reader.ReadLine(); err == nil; content, _, err = res.Reader.ReadLine() {
+		ch := string(content)
+		// fmt.Println(ch)
+		menu.Option(ch, ch, false, nil)
+	}
+
+	err = menu.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return dfltChannel
 }
 
 func main() {

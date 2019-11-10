@@ -8,10 +8,10 @@ docker run --rm -it \
 -v $PWD/crypto-config/peerOrganizations/org1.example.com/users/User1@org1.example.com/tls:/etc/hyperledger/fabric/tls \
 -w /etc/hyperledger/fabric \
 --network net_byfn \
-hyperledger/fabric-tools:amd64-1.4.3 \
+hyperledger/fabric-tools:amd64-1.4.2 \
 sh -c 'discover --configFile conf.yaml \
 --peerTLSCA=tls/ca.crt \
---userKey=msp/keystore/3c4e47903ec2679a9a44455d29518bc23b8befd9c03fbbdfc53e4103be584a4f_sk \
+--userKey=msp/keystore/21c9c3cc4aabbf48a15fec633f693384090b59a7882f5043a9335a7ffd588982_sk \
 --userCert=msp/signcerts/User1@org1.example.com-cert.pem \
 --MSP Org1MSP \
 saveConfig; \
