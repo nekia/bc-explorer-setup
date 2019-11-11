@@ -12,7 +12,9 @@ import (
 	"github.com/Songmu/prompter"
 	"github.com/dixonwille/wmenu"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/kr/pretty"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v2"
@@ -68,7 +70,7 @@ func pullCli(ver string) {
 	io.Copy(os.Stdout, out)
 }
 
-func listCli(peer string) string {
+func listCli(peer string) (string, string) {
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -76,6 +78,7 @@ func listCli(peer string) string {
 	}
 
 	var peerContainer types.Container
+	var network string
 	c := types.ContainerListOptions{}
 	if list, err := cli.ContainerList(ctx, c); err != nil {
 		panic(err)
@@ -83,6 +86,8 @@ func listCli(peer string) string {
 		for _, container := range list {
 			if strings.Split(container.Names[0], "/")[1] == peer {
 				fmt.Printf("Found : %s\n", peer)
+				fmt.Print(container.HostConfig.NetworkMode)
+				network = container.HostConfig.NetworkMode
 				peerContainer = container
 				break
 			}
@@ -127,7 +132,50 @@ func listCli(peer string) string {
 		log.Fatal(err)
 	}
 
-	return dfltChannel
+	return network, dfltChannel
+}
+
+func discoverPeers(peer string, net string, ch string) {
+
+	ctx := context.Background()
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		panic(err)
+	}
+	resp, err := cli.ContainerCreate(ctx, &container.Config{
+		Image:        "hyperledger/fabric-tools:1.4.2",
+		Cmd:          []string{"discover"},
+		Tty:          true,
+		AttachStdout: true,
+		AttachStderr: true,
+	}, &container.HostConfig{
+		// AutoRemove: true,
+		NetworkMode: container.NetworkMode(net),
+	}, nil, "")
+	if err != nil {
+		panic(err)
+	}
+
+	if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+		panic(err)
+	}
+
+	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			panic(err)
+		}
+	case <-statusCh:
+	}
+
+	out, err := cli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{ShowStdout: true})
+	if err != nil {
+		panic(err)
+	}
+
+	stdcopy.StdCopy(os.Stdout, os.Stderr, out)
+
 }
 
 func main() {
@@ -253,7 +301,9 @@ func main() {
 	}
 
 	// pullCli("1.4.2")
-	listCli(dfltPeer)
+	networkName, dfltChannel := listCli(dfltPeer)
+
+	discoverPeers(dfltPeer, networkName, dfltChannel)
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
