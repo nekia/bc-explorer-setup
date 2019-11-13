@@ -13,8 +13,8 @@ import (
 	"github.com/dixonwille/wmenu"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/kr/pretty"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v2"
@@ -135,22 +135,49 @@ func listCli(peer string) (string, string) {
 	return network, dfltChannel
 }
 
-func discoverPeers(peer string, net string, ch string) {
+func discoverPeers(peer string, net string, ch string, domain string, mspid string) {
 
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		panic(err)
 	}
+
+	skname := "37f1cbe89326212b9671ce1e09ac78f1b11ec376a8f944178b0c20e2e7afe950_sk"
+	cmd := fmt.Sprintf(`discover --configFile conf.yaml \
+	--peerTLSCA=tls/ca.crt \
+	--userKey=msp/keystore/%s \
+	--userCert=msp/signcerts/User1@%s-cert.pem \
+	--MSP %s \
+	saveConfig; \
+	discover --configFile conf.yaml \
+	peers \
+	--channel %s \
+	--server %s:7051`, skname, domain, mspid, ch, peer)
+
+	fmt.Println(cmd)
 	resp, err := cli.ContainerCreate(ctx, &container.Config{
-		Image:        "hyperledger/fabric-tools:1.4.2",
-		Cmd:          []string{"discover"},
-		Tty:          true,
+		Image: "hyperledger/fabric-tools:1.4.2",
+		Cmd:   []string{"sh", "-c", cmd},
+		// Tty:          true,
 		AttachStdout: true,
 		AttachStderr: true,
+		WorkingDir:   "/etc/hyperledger/fabric",
 	}, &container.HostConfig{
 		// AutoRemove: true,
 		NetworkMode: container.NetworkMode(net),
+		Mounts: []mount.Mount{
+			{
+				Type:   mount.TypeBind,
+				Source: "/home/atsushi/hyperledger/bc-explorer-setup/crypto-config/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp",
+				Target: "/etc/hyperledger/fabric/msp",
+			},
+			{
+				Type:   mount.TypeBind,
+				Source: "/home/atsushi/hyperledger/bc-explorer-setup/crypto-config/peerOrganizations/org1.example.com/users/User1@org1.example.com/tls",
+				Target: "/etc/hyperledger/fabric/tls",
+			},
+		},
 	}, nil, "")
 	if err != nil {
 		panic(err)
@@ -173,8 +200,10 @@ func discoverPeers(peer string, net string, ch string) {
 	if err != nil {
 		panic(err)
 	}
-
-	stdcopy.StdCopy(os.Stdout, os.Stderr, out)
+	_, err = io.Copy(os.Stdout, out)
+	if err != nil && err != io.EOF {
+		log.Fatal(err)
+	}
 
 }
 
@@ -303,7 +332,7 @@ func main() {
 	// pullCli("1.4.2")
 	networkName, dfltChannel := listCli(dfltPeer)
 
-	discoverPeers(dfltPeer, networkName, dfltChannel)
+	discoverPeers(dfltPeer, networkName, dfltChannel, domain, org["ID"].(string))
 
 	bytes, err := json.Marshal(config)
 	if err != nil {
