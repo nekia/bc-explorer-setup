@@ -143,7 +143,7 @@ func discoverPeers(peer string, net string, ch string, domain string, mspid stri
 		panic(err)
 	}
 
-	skname := "37f1cbe89326212b9671ce1e09ac78f1b11ec376a8f944178b0c20e2e7afe950_sk"
+	skname := "6b3cf4905408799eecf955fbb31325d24356c1cd042069a72887ab24d2455863_sk"
 	cmd := fmt.Sprintf(`discover --configFile conf.yaml \
 	--peerTLSCA=tls/ca.crt \
 	--userKey=msp/keystore/%s \
@@ -157,9 +157,9 @@ func discoverPeers(peer string, net string, ch string, domain string, mspid stri
 
 	fmt.Println(cmd)
 	resp, err := cli.ContainerCreate(ctx, &container.Config{
-		Image: "hyperledger/fabric-tools:1.4.2",
-		Cmd:   []string{"sh", "-c", cmd},
-		// Tty:          true,
+		Image:        "hyperledger/fabric-tools:1.4.2",
+		Cmd:          []string{"sh", "-c", cmd},
+		Tty:          true,
 		AttachStdout: true,
 		AttachStderr: true,
 		WorkingDir:   "/etc/hyperledger/fabric",
@@ -196,15 +196,28 @@ func discoverPeers(peer string, net string, ch string, domain string, mspid stri
 	case <-statusCh:
 	}
 
-	out, err := cli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{ShowStdout: true})
+	out, err := cli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{ShowStderr: true, ShowStdout: true})
 	if err != nil {
 		panic(err)
 	}
-	_, err = io.Copy(os.Stdout, out)
-	if err != nil && err != io.EOF {
-		log.Fatal(err)
-	}
 
+	data, _ := ioutil.ReadAll(out)
+	// fmt.Println(string(data))
+	discResp := []DiscoverResp{}
+	json.Unmarshal(data, &discResp)
+	// fmt.Println(discResp)
+
+	for _, node := range discResp {
+		fmt.Println(node.Endpoint)
+	}
+}
+
+type DiscoverResp struct {
+	MSPID        string
+	LedgerHeight string
+	Endpoint     string
+	Identity     string
+	Chaincodes   []string
 }
 
 func main() {
